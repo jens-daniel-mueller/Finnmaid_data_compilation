@@ -754,4 +754,3 @@ df.all <- df.all %>%
 setwd(paste(root, "/_summarized_data", sep=""))
 write_csv(df.all, "Finnmaid_all_2019.csv")
 
-
