@@ -719,27 +719,29 @@ rm(df, temp, files, file)
 df.all <- distinct(df.all)
 unique(df.all$route)
 
-# lon.int <- 10.9
+# lon.int <- 19.9
 # param <- "Sal"
-# 
+# rm(lon.int, param)
+
 # for (lon.int in seq(10,30,1)) {
 #   for (param in c("Lat", "pCO2", "Sal", "Tem", "cO2")) {
-#     
+# 
 #     df.all %>%
-#       filter(Lon > lon.int, Lon <= lon.int+1) %>%
+#       filter(Lon > lon.int, Lon <= lon.int+0.1) %>%
 #       ggplot(aes_string("date", param, col="route"))+
 #       geom_point()+
-#       scale_x_datetime(date_breaks = "1 year", date_labels = "%Y",
-#                        limits = c(ymd_hm("2003-01-01T0001"),
-#                                   ymd_hm("2019-12-31T2359")))+
+#       # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y",
+#       #                  limits = c(ymd_hm("2003-01-01T0001"),
+#       #                             ymd_hm("2019-12-31T2359")))+
 #       theme_bw()
-#     
+# 
 #     setwd("C:/Mueller_Jens_Data/Finnmaid_data_compilation/Plots/Diagnostics")
 #     ggsave(paste(param,"_",lon.int,"_degE_timeseries.jpg", sep = ""),
 #            width = 15, height = 5)
-#     
+# 
 #     }
 # }
+
 
 df.all <- df.all %>%
   mutate(cO2 = if_else(cO2 < 200, NaN, cO2),
@@ -747,6 +749,8 @@ df.all <- df.all %>%
                          date > ymd("2014-07-01") &
                          date < ymd("2014-12-31"), NaN, cO2),
          Sal = if_else(Sal < 4 & year(date) == 2011 & route == "E",
+                       NaN, Sal),
+         Sal = if_else(ID == "03-10-22",
                        NaN, Sal))
 
 # Safe merged data file --------------------------------------------------------------------
