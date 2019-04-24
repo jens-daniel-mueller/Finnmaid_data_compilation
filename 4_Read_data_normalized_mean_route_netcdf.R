@@ -3,63 +3,118 @@
 library(tidyverse)
 library(ncdf4)
 library(here)
-library(geosphere)
+library(lubridate)
 
+# Read Finnmaid netcdf referenced to mean route ---------------------------
 
-# Read mean route netcdf from Henry Bittig --------------------------------
+nc <- nc_open(here::here("Data/_mean_routes", "FM_all_2019_on_standard_tracks.nc"))
 
-nc <- nc_open(here::here("Data/_mean_routes", "Finnmaid_mean_E_W_dist_from_L.nc"))
 print(nc)
-
-ncatt_get(nc, 0)
-ncatt_get(nc, "lat_E")
-ncatt_get(nc, "distx")
-
-nc$var[[1]]
-attributes(nc)
 attributes(nc$var)
 attributes(nc$dim)
-nc$nvars
-
-attributes(nc$dim)$names
 
 
-#var = unlist(attributes(nc$var))[2]
+# Subset timeseries by Lat bordes -----------------------------------------
 
-for (var in  unlist(attributes(nc$var))) {
+# read required vectors from netcdf file
+route <- ncvar_get(nc, "route")
+route <- unlist(strsplit(route, ""))
+date_time <- ncvar_get(nc, "time")
+latitude_east <- ncvar_get(nc, "latitude_east")
+
+
+# define selection criteria
+select_route <- "E"
+low_lat <- 57.5
+high_lat <- 58.5
+
+
+attributes(nc$var)
+var_read <- attributes(nc$var)$names[c(9,10,11,12)]
+#var_read <- "SST_east"
+
+for (var in var_read) {
   
-  col <- ncvar_get(nc, var)
+  array <- ncvar_get(nc, var) # store the data in a 2-dimensional array
+  #dim(array) # should have 2 dimensions: 544 coordinate, 2089 time steps
   
-  if (exists("temp")){
-  temp <- bind_cols(temp, as_tibble(col))
-  } else{temp <- as_tibble(col)}
-
+  fillvalue <- ncatt_get(nc, var, "_FillValue")
+  array[array == fillvalue$value] <- NA
+  rm(fillvalue)
+  
+  #i <- 5
+  for (i in seq(1,length(route),1)){
+    
+    if(route[i] == select_route) {
+      slice <- array[i,]
+      
+      value <- mean(slice[latitude_east > low_lat & latitude_east < high_lat], na.rm = TRUE)
+      date <- ymd("2000-01-01") + date_time[i]
+      
+      temp <- bind_cols(date = date, var=var, value = value)
+      
+      if (exists("timeseries", inherits = FALSE)){
+        timeseries <- bind_rows(timeseries, temp)
+      } else{timeseries <- temp}
+      
+      rm(temp, value, date)
+      
+    } 
+  }
 }
 
-df <- temp %>% 
-  set_names(unlist(attributes(nc$var)))
+nc_close(nc)
+rm(list=setdiff(ls(), c("timeseries", "select_route", "low_lat", "high_lat")))
 
-rm(temp)
+timeseries %>% 
+  ggplot(aes(date, value))+
+  geom_point()+
+  facet_grid(var~., scales = "free_y")
+  
+timeseries <- timeseries %>% 
+  mutate(dataset = "netcdf")
 
 
-df <- df %>% 
-  mutate(dist = ncvar_get(nc, "distx"),
-         dist_geo = distGeo(cbind(lon_E, lat_E), c(10.8605315, 53.9414096))/1e3)
 
+# Read and subset Finnmaid data set provided for netcdf creation ----------
+
+FM <- read_csv(here::here("Data/_summarized_data", "Finnmaid_all_2019.csv"),
+               col_types = cols(cO2 = col_double()))
+
+FM_timeseries <- FM %>% 
+  filter(route == select_route,
+         Lat > low_lat,
+         Lat < high_lat) %>% 
+  select(ID, date, SSS_east = Sal, SST_east = Tem, pCO2_east = pCO2, oxygen_east = cO2) %>% 
+  group_by(ID) %>% 
+  summarise_all("mean", na.rm=TRUE) %>% 
+  ungroup() %>% 
+  select(-ID) %>% 
+  gather(key = "var", value = "value", 2:5) %>% 
+  mutate(dataset = "provided",
+         date = as.Date(date))
+
+
+df <- bind_rows(FM_timeseries, timeseries)
 
 df %>% 
-  filter(dist < 200) %>% 
-  ggplot()+
-  geom_point(aes(lon_W,lat_W, col=dist))+
-  geom_point(aes(lon_E,lat_E, col=dist))+
-  scale_color_viridis_c()
+ggplot()+
+  geom_point(aes(date, value, shape=dataset, col=dataset))+
+  scale_shape_manual(values = c(3,19))+
+  scale_color_brewer(palette = "Set1")+
+  facet_wrap(~var, scales = "free_y", ncol = 1)+
+  theme_bw()+
+  labs(title = "Comparison of dataset provided by Jens and netcdf created by Henry",
+       subtitle = paste("Latitude interval",low_lat,"-",high_lat,"| route",select_route))
 
-df %>% 
-  ggplot()+
-  geom_point(aes(dist, lon_W))+
-  geom_point(aes(dist, lon_E))+
-  scale_color_viridis_c()
-
-df %>% 
-  ggplot()+
-  geom_point(aes(dist, dist_geo))
+ggsave(here::here("Plots", "timeseries_netcdf_vs_provided.pdf"),
+       width = 25, height = 10, dpi = 300)
+  
+  
+  
+  
+  
+  
+  
+  
+  
